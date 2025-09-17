@@ -64,9 +64,9 @@ fn ChatPage() -> impl IntoView {
         <div class="max-w-2xl mx-auto bg-white shadow rounded-2xl p-6">
             <h1 class="text-2xl font-bold mb-4">Leptos Chat Demo</h1>
 
+                    <label class="block text-sm font-medium text-gray-700">Select Model</label>
             <div class="mb-4 flex items-center space-x-2">
                 <div class="flex-1">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Select Model</label>
                     <select
                         class="w-full p-2 border rounded-md"
                         on:change=move |ev| {
