@@ -81,7 +81,7 @@ fn ChatPage() -> impl IntoView {
                            children=move |m| {
                                let m_clone = m.clone();
                                view! {
-                                   <option value=m selected=move || m_clone == selected_model.get()>m</option>
+                                   <option value=m selected=move || m_clone == selected_model.get()>{m}</option>
                                }
                            }
                        />
