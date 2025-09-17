@@ -14,20 +14,23 @@ async fn call_model(
     set_messages: WriteSignal<Vec<(String, String)>>,
 ) {
     let reply = format!("{model} answers to {input}: Yes, Master");
-    let mut iter = reply.split(' ');
-    let mut first: String = iter.next().expect("Has at least one word").into();
-    first.reserve(reply.len() - first.len());
-    set_messages.update(|msgs| msgs.push(("AI".to_string(), first)));
-    let mut stream = std::pin::pin!(futures_util::stream::iter(iter).then(|w| async move {
-        gloo_timers::future::sleep(std::time::Duration::from_millis(100)).await;
-        w
-    }));
-    while let Some(word) = stream.next().await {
-        set_messages.update(|x| {
-            let msg = &mut x.last_mut().unwrap().1;
-            msg.push(' ');
-            *msg += word;
-        });
+    let mut stream = std::pin::pin!(futures_util::stream::iter(reply.split(' ')).then(
+        |w| async move {
+            gloo_timers::future::sleep(std::time::Duration::from_millis(100)).await;
+            w
+        }
+    ));
+    if let Some(first) = stream.next().await {
+        let mut first = first.to_string();
+        first.reserve(reply.len() - first.len());
+        set_messages.update(|msgs| msgs.push(("AI".to_string(), first)));
+        while let Some(word) = stream.next().await {
+            set_messages.update(|x| {
+                let msg = &mut x.last_mut().unwrap().1;
+                msg.push(' ');
+                *msg += word;
+            });
+        }
     }
 }
 
