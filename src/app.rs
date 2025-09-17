@@ -1,3 +1,4 @@
+use futures_util::StreamExt;
 use leptos::{prelude::*, task::spawn_local};
 use leptos_meta::*;
 use leptos_router::{
@@ -7,8 +8,25 @@ use leptos_router::{
 };
 
 /// Mock async inference function
-async fn call_model(model: String, input: String) -> String {
-    format!("{model} answers to {input}: Yes, Master")
+async fn call_model(
+    model: String,
+    input: String,
+    set_messages: WriteSignal<Vec<(String, String)>>,
+) {
+    let reply = format!("{model} answers to {input}: Yes, Master");
+    let mut iter = reply.split(' ');
+    let mut first: String = iter.next().expect("Has at least one word").into();
+    first.reserve(reply.len() - first.len());
+    set_messages.update(|msgs| msgs.push(("AI".to_string(), first)));
+    let mut stream = futures_util::stream::iter(iter);
+    while let Some(word) = stream.next().await {
+        set_messages.update(|x| {
+            let msg = &mut x.last_mut().unwrap().1;
+            msg.push(' ');
+            *msg += word;
+        });
+        gloo_timers::future::sleep(std::time::Duration::from_millis(100)).await;
+    }
 }
 
 #[component]
@@ -49,8 +67,7 @@ fn ChatPage() -> impl IntoView {
         set_messages.update(|msgs| msgs.push(("You".to_string(), user_input.clone())));
 
         spawn_local(async move {
-            let reply = call_model(model, user_input).await;
-            set_messages.update(|msgs| msgs.push(("AI".to_string(), reply)));
+            call_model(model, user_input, set_messages).await;
         });
     };
 
