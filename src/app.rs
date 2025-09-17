@@ -7,8 +7,8 @@ use leptos_router::{
 };
 
 /// Mock async inference function
-async fn call_model(_model: String, _input: String) -> String {
-    "Yes, Master".to_string()
+async fn call_model(model: String, input: String) -> String {
+    format!("{model} answers to {input}: Yes, Master")
 }
 
 #[component]
@@ -27,9 +27,14 @@ pub fn App() -> impl IntoView {
 
 #[component]
 fn ChatPage() -> impl IntoView {
-    let models = vec!["gpt-4", "gpt-4o", "gpt-3.5-turbo"];
+    let models = vec![
+        "gpt-4".to_string(),
+        "gpt-4o".to_string(),
+        "gpt-3.5-turbo".to_string(),
+    ];
 
-    let (selected_model, set_selected_model) = signal(models[0].to_string());
+    let (selected_model, set_selected_model) = signal(models[0].clone());
+    let (model_list, set_model_list) = signal(models);
     let (input, set_input) = signal(String::new());
     let (messages, set_messages) = signal::<Vec<(String, String)>>(vec![]);
 
@@ -49,24 +54,46 @@ fn ChatPage() -> impl IntoView {
         });
     };
 
+    let add_next_model = move |_| {
+        let new_model = format!("next-model-{}", uuid::Uuid::new_v4());
+        set_model_list.update(|list| list.push(new_model.clone()));
+        set_selected_model.set(new_model);
+    };
+
     view! {
         <div class="max-w-2xl mx-auto bg-white shadow rounded-2xl p-6">
             <h1 class="text-2xl font-bold mb-4">Leptos Chat Demo</h1>
 
-            <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Select Model</label>
-                <select
-                    class="w-full p-2 border rounded-md"
-                    on:change=move |ev| {
-                        if let Some(value) = event_target_value(&ev).as_str().to_owned().into() {
-                            set_selected_model.set(value);
+            <div class="mb-4 flex items-center space-x-2">
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Select Model</label>
+                    <select
+                        class="w-full p-2 border rounded-md"
+                        on:change=move |ev| {
+                            if let Some(value) = event_target_value(&ev).as_str().to_owned().into() {
+                                set_selected_model.set(value);
+                            }
                         }
-                    }
+                    >
+                    <For
+                           each=move || model_list.get()
+                           key=|m| m.clone()
+                           children=move |m| {
+                               let m_clone = m.clone();
+                               view! {
+                                   <option value=m selected=move || m_clone == selected_model.get()>m</option>
+                               }
+                           }
+                       />
+                    </select>
+                </div>
+                <button
+                    class="px-3 py-2 border rounded-md bg-gray-200 hover:bg-gray-300 text-sm"
+                    on:click=add_next_model
+                    title="Add next model"
                 >
-                    {models.into_iter().map(|m| view! {
-                        <option value=m selected={m == selected_model.get()}>{m}</option>
-                    }).collect_view()}
-                </select>
+                    "↻"
+                </button>
             </div>
 
             <div class="h-64 overflow-y-auto border p-2 mb-4 rounded-md bg-gray-50">
