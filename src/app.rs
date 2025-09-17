@@ -25,11 +25,16 @@ async fn call_model(
         first.reserve(reply.len() - first.len());
         set_messages.update(|msgs| msgs.push(("AI".to_string(), first)));
         while let Some(word) = stream.next().await {
-            set_messages.update(|x| {
-                let msg = &mut x.last_mut().unwrap().1;
-                msg.push(' ');
-                *msg += word;
-            });
+            if set_messages
+                .try_update(|x| {
+                    let msg = &mut x.last_mut().unwrap().1;
+                    msg.push(' ');
+                    *msg += word;
+                })
+                .is_none()
+            {
+                break;
+            }
         }
     }
 }
@@ -62,17 +67,21 @@ fn ChatPage() -> impl IntoView {
     let (messages, set_messages) = signal::<Vec<(String, String)>>(vec![]);
 
     let on_submit = move || {
-        let model = selected_model.get();
-        let user_input = input.get();
-        if user_input.trim().is_empty() {
+        let mut user_input = String::new();
+        set_input.update(|cur| {
+            if !cur.trim().is_empty() {
+                user_input = std::mem::take(cur);
+            }
+        });
+
+        if user_input.is_empty() {
             return;
         }
 
-        set_input.set(String::new());
         set_messages.update(|msgs| msgs.push(("You".to_string(), user_input.clone())));
 
         spawn_local(async move {
-            call_model(model, user_input, set_messages).await;
+            call_model(selected_model.get(), user_input, set_messages).await;
         });
     };
 
