@@ -1,4 +1,6 @@
 mod app;
+mod bytes_line_stream;
+mod ollama;
 
 use app::*;
 use leptos::{logging, mount};

@@ -1,11 +1,13 @@
-use futures_util::StreamExt;
+use futures_util::{FutureExt, StreamExt, TryStreamExt};
 use leptos::{prelude::*, task::spawn_local};
-use leptos_meta::*;
+use leptos_meta::{provide_meta_context, Stylesheet};
 use leptos_router::{
     components::Route,
     components::{Router, Routes},
     *,
 };
+
+use crate::ollama;
 
 /// Mock async inference function
 async fn call_model(
@@ -13,23 +15,27 @@ async fn call_model(
     input: String,
     set_messages: WriteSignal<Vec<(String, String)>>,
 ) {
-    let reply = format!("{model} answers to {input}: Yes, Master");
-    let mut stream = std::pin::pin!(futures_util::stream::iter(reply.split(' ')).then(
-        |w| async move {
-            gloo_timers::future::sleep(std::time::Duration::from_millis(100)).await;
-            w
-        }
-    ));
-    if let Some(first) = stream.next().await {
+    // let reply = format!("{model} answers to {input}: Yes, Master");
+    // let stream = futures_util::stream::iter(reply.split(' ')).then(|w| async move {
+    //     gloo_timers::future::sleep(std::time::Duration::from_millis(100)).await;
+    //     w
+    // });
+    let mut stream = ollama::send_request(input)
+        .await
+        .unwrap()
+        .map(|x| x.map(|x| x.response));
+    let mut stream = std::pin::pin!(stream);
+    if let Some(first) = stream.try_next().await.unwrap() {
         let mut first = first.to_string();
-        first.reserve(reply.len() - first.len());
+        //first.reserve(reply.len() - first.len());
+        first.reserve(1000);
         set_messages.update(|msgs| msgs.push(("AI".to_string(), first)));
-        while let Some(word) = stream.next().await {
+        while let Some(word) = stream.try_next().await.unwrap() {
             if set_messages
                 .try_update(|x| {
-                    let msg = &mut x.last_mut().unwrap().1;
-                    msg.push(' ');
-                    *msg += word;
+                    let (_, msg) = &mut x.last_mut().unwrap();
+                    //msg.push(' ');
+                    *msg += word.as_str();
                 })
                 .is_none()
             {
