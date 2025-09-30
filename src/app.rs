@@ -1,4 +1,4 @@
-use futures_util::{FutureExt, StreamExt, TryStreamExt};
+use futures_util::{StreamExt, TryStreamExt};
 use leptos::{prelude::*, task::spawn_local};
 use leptos_meta::{provide_meta_context, Stylesheet};
 use leptos_router::{
@@ -11,8 +11,8 @@ use crate::ollama;
 
 /// Mock async inference function
 async fn call_model(
-    model: String,
     input: String,
+    model: String,
     set_messages: WriteSignal<Vec<(String, String)>>,
 ) {
     // let reply = format!("{model} answers to {input}: Yes, Master");
@@ -20,7 +20,7 @@ async fn call_model(
     //     gloo_timers::future::sleep(std::time::Duration::from_millis(100)).await;
     //     w
     // });
-    let mut stream = ollama::send_request(input)
+    let stream = ollama::send_request(input, model)
         .await
         .unwrap()
         .map(|x| x.map(|x| x.response));
@@ -61,11 +61,7 @@ pub fn App() -> impl IntoView {
 
 #[component]
 fn ChatPage() -> impl IntoView {
-    let models = vec![
-        "gpt-4".to_string(),
-        "gpt-4o".to_string(),
-        "gpt-3.5-turbo".to_string(),
-    ];
+    let models = vec!["qwen3:30B".to_string(), "qwen2.5:14B".to_string()];
 
     let (selected_model, set_selected_model) = signal(models[0].clone());
     let (model_list, set_model_list) = signal(models);
@@ -85,9 +81,10 @@ fn ChatPage() -> impl IntoView {
         }
 
         set_messages.update(|msgs| msgs.push(("You".to_string(), user_input.clone())));
+        let model = selected_model.get();
 
         spawn_local(async move {
-            call_model(selected_model.get(), user_input, set_messages).await;
+            call_model(user_input, model, set_messages).await;
         });
     };
 

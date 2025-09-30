@@ -7,12 +7,13 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub async fn send_request(
     prompt: impl Into<Cow<'static, str>>,
+    model: impl Into<Cow<'static, str>>,
 ) -> Result<impl futures_util::Stream<Item = Result<GenerationResponse>>> {
     let r = reqwest::Client::new();
     Ok(crate::bytes_line_stream::lines(
         r.post("http://127.0.0.1:11434/api/generate")
             .json(&GenerationRequest {
-                model: "qwen3:30B".into(),
+                model: model.into(),
                 prompt: prompt.into(),
             })
             .send()
@@ -22,7 +23,6 @@ pub async fn send_request(
     )
     .map(|d| {
         let bytes = d?;
-
         Ok(serde_json::from_slice(&bytes)?)
     }))
 }
@@ -70,7 +70,7 @@ mod tests {
     #[tokio::test]
     async fn send_ollama_request() {
         let prompt = "Tell me a story about the rust programming language.";
-        let mut stream = std::pin::pin!(send_request(prompt).await.unwrap());
+        let mut stream = std::pin::pin!(send_request(prompt, "qwen3:30B").await.unwrap());
         while let Some(x) = stream.try_next().await.unwrap() {
             eprintln!("Got: {}", x.response);
         }
