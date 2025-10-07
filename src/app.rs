@@ -1,5 +1,6 @@
 use futures_util::{StreamExt, TryStreamExt};
-use leptos::{prelude::*, task::spawn_local};
+
+use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, Stylesheet};
 use leptos_router::{
     components::Route,
@@ -14,27 +15,21 @@ async fn call_model(
     input: String,
     model: String,
     set_messages: WriteSignal<Vec<(String, String)>>,
-) {
-    // let reply = format!("{model} answers to {input}: Yes, Master");
-    // let stream = futures_util::stream::iter(reply.split(' ')).then(|w| async move {
-    //     gloo_timers::future::sleep(std::time::Duration::from_millis(100)).await;
-    //     w
-    // });
+) -> crate::Result<()> {
     let stream = ollama::send_request(input, model)
-        .await
-        .unwrap()
+        .await?
         .map(|x| x.map(|x| x.response));
     let mut stream = std::pin::pin!(stream);
-    if let Some(first) = stream.try_next().await.unwrap() {
+    if let Some(first) = stream.try_next().await? {
         let mut first = first.to_string();
         //first.reserve(reply.len() - first.len());
         first.reserve(1000);
         set_messages.update(|msgs| msgs.push(("AI".to_string(), first)));
-        while let Some(word) = stream.try_next().await.unwrap() {
+        while let Some(word) = stream.try_next().await? {
             if set_messages
                 .try_update(|x| {
-                    let (_, msg) = &mut x.last_mut().unwrap();
-                    //msg.push(' ');
+                    let (_, msg) =
+                        &mut x.last_mut().expect("There is always one msg at this point");
                     *msg += word.as_str();
                 })
                 .is_none()
@@ -43,6 +38,7 @@ async fn call_model(
             }
         }
     }
+    Ok(())
 }
 
 #[component]
@@ -67,8 +63,15 @@ fn ChatPage() -> impl IntoView {
     let (model_list, set_model_list) = signal(models);
     let (input, set_input) = signal(String::new());
     let (messages, set_messages) = signal::<Vec<(String, String)>>(vec![]);
+    let llm_action = Action::new_local(move |user_input: &String| {
+        let user_input = user_input.clone();
+        call_model(user_input.clone(), selected_model.get(), set_messages)
+    });
 
     let on_submit = move || {
+        if llm_action.pending().get() {
+            return;
+        }
         let mut user_input = String::new();
         set_input.update(|cur| {
             if !cur.trim().is_empty() {
@@ -81,11 +84,8 @@ fn ChatPage() -> impl IntoView {
         }
 
         set_messages.update(|msgs| msgs.push(("You".to_string(), user_input.clone())));
-        let model = selected_model.get();
 
-        spawn_local(async move {
-            call_model(user_input, model, set_messages).await;
-        });
+        llm_action.dispatch_local(user_input);
     };
 
     let add_next_model = move |_| {
@@ -134,17 +134,27 @@ fn ChatPage() -> impl IntoView {
                 <For
                     each=move || messages.get()
                     key=|(sender, _)| sender.clone() + &uuid::Uuid::new_v4().to_string()
-                    children=move |(sender, text)| {
-                        view! {
-                            <div class="mb-2">
-                                <span class="font-semibold">{sender}: </span>
-                                <span>{text}</span>
-                            </div>
-                        }
-                    }
-                />
+                    let((sender, text))
+                >
+                    <div class="mb-2">
+                        <span class="font-semibold">{sender}: </span>
+                        <span>{text}</span>
+                    </div>
+                </For>
             </div>
+            { move || {
+                (!llm_action.pending().get()).then_some(())?;
 
+                match llm_action.value().read().as_ref()? {
+                    Ok(_) => None,
+                    Err(e) => Some(view! {
+                        <div class="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg mb-4">
+                            <p class="font-medium">Error occurred</p>
+                            <p class="text-sm mt-1">{e.to_string()}</p>
+                        </div>
+                    })
+                }
+            } }
             <div class="flex space-x-2">
                 <input
                     class="flex-1 border rounded-md p-2"
@@ -163,7 +173,7 @@ fn ChatPage() -> impl IntoView {
                     class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                     on:click=move |_| on_submit()
                 >
-                    Send
+                { move|| if llm_action.pending().get() { "Pending" } else {"Send"} }
                 </button>
             </div>
         </div>

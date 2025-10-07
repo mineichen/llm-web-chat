@@ -3,24 +3,26 @@ use std::borrow::Cow;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
 pub async fn send_request(
     prompt: impl Into<Cow<'static, str>>,
     model: impl Into<Cow<'static, str>>,
-) -> Result<impl futures_util::Stream<Item = Result<GenerationResponse>>> {
+) -> crate::Result<impl futures_util::Stream<Item = crate::Result<GenerationResponse>>> {
     let r = reqwest::Client::new();
-    Ok(crate::bytes_line_stream::lines(
-        r.post("http://127.0.0.1:11434/api/generate")
+    Ok(crate::bytes_line_stream::lines({
+        let resp = r
+            .post("http://127.0.0.1:11434/api/generate")
             .json(&GenerationRequest {
                 model: model.into(),
                 prompt: prompt.into(),
             })
             .send()
-            .await
-            .unwrap()
-            .bytes_stream(),
-    )
+            .await?;
+        if resp.status().is_success() {
+            Ok(resp.bytes_stream())
+        } else {
+            Err(resp.text().await?)
+        }?
+    })
     .map(|d| {
         let bytes = d?;
         Ok(serde_json::from_slice(&bytes)?)
